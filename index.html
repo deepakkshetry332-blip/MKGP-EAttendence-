@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Attendance Pro (Professional)</title>
+    <title>Attendance Pro (Secure Login & Filters)</title>
     
     <!-- Tailwind CSS (Aesthetics) -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -11,11 +11,15 @@
     <!-- Icons -->
     <script src="https://unpkg.com/lucide@latest"></script>
     
-    <!-- Firebase SDKs (Cloud Storage is now required for photos) -->
-    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-storage-compat.js"></script> <!-- NEW: For Selfie Storage -->
+    <!-- Firebase SDKs (Modular - for Email/Password stability) -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, onAuthStateChanged, signOut, updateProfile } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, getDoc, updateDoc, collection, query, where, orderBy, onSnapshot, FieldValue, serverTimestamp, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        
+        // Expose Firebase objects globally for window scope use
+        window.firebaseApp = { initializeApp, getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, onAuthStateChanged, signOut, updateProfile, getFirestore, doc, setDoc, getDoc, updateDoc, collection, query, where, orderBy, onSnapshot, FieldValue, serverTimestamp, deleteDoc };
+    </script>
 
     <!-- Export Libraries -->
     <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
@@ -35,35 +39,39 @@
 </head>
 <body class="bg-gray-100 text-gray-800 h-screen flex flex-col overflow-hidden">
 
-    <!-- LOGIN/REGISTER SCREEN -->
-    <div id="login-screen" class="fixed inset-0 z-50 bg-white flex flex-col justify-center items-center p-6">
+    <!-- LOGIN/REGISTER SCREEN (Email/Password Auth) -->
+    <div id="auth-screen" class="fixed inset-0 z-50 bg-white flex flex-col justify-center items-center p-6">
         <div class="text-center w-full max-w-sm">
             <div class="bg-indigo-100 p-5 rounded-full inline-flex mb-6">
-                <i data-lucide="lock" class="w-12 h-12 text-indigo-600"></i>
+                <i data-lucide="shield-check" class="w-12 h-12 text-indigo-600"></i>
             </div>
-            <h1 class="text-3xl font-bold text-gray-900 mb-2">Secure Login</h1>
-            <p class="text-gray-500 mb-6">Student ID or Email required</p>
+            <h1 class="text-3xl font-bold text-gray-900 mb-2">Secure Attendance</h1>
+            <p class="text-gray-500 mb-6" id="auth-mode-text">Sign In to continue</p>
             
-            <input type="email" id="auth-email" placeholder="Student Email/ID" 
-                   class="w-full px-4 py-3 rounded-xl border border-gray-200 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 mb-3 text-lg">
-            <input type="password" id="auth-password" placeholder="Password" 
-                   class="w-full px-4 py-3 rounded-xl border border-gray-200 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 mb-4 text-lg">
-            <input type="text" id="auth-name" placeholder="Full Name (Only on Register)" 
-                   class="w-full px-4 py-3 rounded-xl border border-gray-200 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 mb-4 text-lg hidden">
+            <div class="space-y-3">
+                <input type="text" id="auth-name-input" placeholder="Poora Naam (Full Name)" 
+                       class="w-full px-4 py-3 rounded-xl border border-gray-200 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-lg hidden">
 
-            <button onclick="document.getElementById('auth-name').classList.toggle('hidden'); document.getElementById('login-btn').classList.toggle('hidden'); document.getElementById('register-btn').classList.toggle('hidden')" 
-                    class="w-full text-indigo-500 font-semibold py-2 rounded-xl transition mb-4">
-                New User? Tap to Register
+                <input type="email" id="auth-email-input" placeholder="Email / Student ID" 
+                       class="w-full px-4 py-3 rounded-xl border border-gray-200 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-lg">
+
+                <input type="password" id="auth-password-input" placeholder="Password (Minimum 6 characters)" 
+                       class="w-full px-4 py-3 rounded-xl border border-gray-200 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-lg">
+            </div>
+
+            <button onclick="authenticateUser()" id="auth-main-btn"
+                    class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 rounded-xl shadow-lg transition transform active:scale-95 mt-4">
+                Sign In
             </button>
             
-            <button id="login-btn" onclick="handleLogin()" 
-                    class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 rounded-xl shadow-lg transition transform active:scale-95">
-                Login
+            <button onclick="toggleAuthMode()" id="auth-toggle-btn"
+                    class="w-full text-indigo-600 font-semibold py-3 mt-2 text-sm transition">
+                Naya Account Banayein (Register)
             </button>
-            <button id="register-btn" onclick="handleRegister()" 
-                    class="w-full bg-green-600 hover:bg-green-700 text-white font-semibold py-3 rounded-xl shadow-lg transition transform active:scale-95 hidden">
-                Register & Login
-            </button>
+            
+            <p class="text-xs text-red-400 mt-4 hidden" id="device-lock-msg">
+                🔒 Yeh Device dusre User ke liye locked hai.
+            </p>
         </div>
     </div>
 
@@ -73,7 +81,7 @@
         <!-- Header -->
         <header class="bg-white border-b border-gray-200 p-4 flex justify-between items-center sticky top-0 z-10 shadow-sm">
             <div class="flex items-center gap-2">
-                <div id="user-initial" class="w-8 h-8 rounded-full bg-indigo-500 text-white font-bold flex items-center justify-center text-sm">U</div>
+                <div id="user-initial" class="w-8 h-8 rounded-full bg-gray-200 text-gray-700 font-bold flex items-center justify-center text-sm">U</div>
                 <div>
                     <h2 class="font-bold text-sm text-gray-800" id="display-name">User</h2>
                     <p class="text-xs text-green-600 font-medium" id="current-class-display">Select Class</p>
@@ -98,11 +106,11 @@
             <!-- Action Buttons -->
             <div class="grid grid-cols-2 gap-4 mb-8">
                 <!-- Check In -->
-                <button onclick="prepareCheckIn()" id="btn-in"
+                <button onclick="handleAction('IN')" id="btn-in"
                     class="btn-pulse flex flex-col items-center justify-center p-6 bg-green-600 text-white rounded-2xl shadow-lg active:scale-95 transition">
-                    <i data-lucide="camera" class="w-8 h-8 mb-2"></i>
+                    <i data-lucide="log-in" class="w-8 h-8 mb-2"></i>
                     <span class="font-bold text-lg">Check In</span>
-                    <span class="text-xs text-green-200 opacity-80">Capture + Code</span>
+                    <span class="text-xs text-green-200 opacity-80">Code Daalein</span>
                 </button>
 
                 <!-- Check Out -->
@@ -110,7 +118,7 @@
                     class="flex flex-col items-center justify-center p-6 bg-red-500 text-white rounded-2xl shadow-lg opacity-50 cursor-not-allowed transition" disabled>
                     <i data-lucide="log-out" class="w-8 h-8 mb-2"></i>
                     <span class="font-bold text-lg">Check Out</span>
-                    <span class="text-xs text-red-200 opacity-80">Before Leaving</span>
+                    <span class="text-xs text-red-200 opacity-80">Chutti se Pehle</span>
                 </button>
             </div>
 
@@ -123,32 +131,26 @@
                 <h3 class="text-xl font-bold text-indigo-900" id="status-text">Not Checked In</h3>
                 <p class="text-xs text-indigo-600 mt-1" id="time-log">--:--</p>
             </div>
-            
-            <!-- Date Filter for Reports (New Feature) -->
-            <div class="bg-gray-200 p-4 rounded-xl mb-6">
-                <h3 class="font-bold text-gray-700 mb-3 text-sm">📅 Filter Report History</h3>
-                <div class="grid grid-cols-2 gap-3">
-                    <div>
-                        <label class="text-xs text-gray-500 block mb-1">Start Date</label>
-                        <input type="date" id="filter-start-date" class="w-full p-2 border rounded-lg text-sm">
-                    </div>
-                    <div>
-                        <label class="text-xs text-gray-500 block mb-1">End Date</label>
-                        <input type="date" id="filter-end-date" class="w-full p-2 border rounded-lg text-sm">
-                    </div>
-                </div>
-                <button onclick="loadHistory(true)" class="w-full mt-3 bg-indigo-500 text-white py-2 rounded-lg text-sm font-semibold hover:bg-indigo-600">
-                    Apply Filter
-                </button>
-            </div>
 
-
-            <!-- History Header -->
+            <!-- History Header (ADVANCED FILTERING ADDED HERE) -->
             <div class="flex justify-between items-end mb-4">
-                <h3 class="font-bold text-gray-800">Today's Log</h3>
+                <h3 class="font-bold text-gray-800">Attendance History</h3>
                 <div class="flex gap-2">
+                    <button onclick="filterHistory()" class="p-2 bg-indigo-100 text-indigo-700 rounded-lg hover:bg-indigo-200"><i data-lucide="filter" class="w-4 h-4"></i></button>
                     <button onclick="exportData('xlsx')" class="p-2 bg-green-100 text-green-700 rounded-lg hover:bg-green-200"><i data-lucide="sheet" class="w-4 h-4"></i></button>
                     <button onclick="exportData('pdf')" class="p-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200"><i data-lucide="file-text" class="w-4 h-4"></i></button>
+                </div>
+            </div>
+
+            <!-- Date Range Inputs for Filtering -->
+            <div class="grid grid-cols-2 gap-3 mb-6 p-3 bg-gray-50 rounded-xl border border-gray-200">
+                <div>
+                    <label for="start-date" class="block text-[10px] font-medium text-gray-500 uppercase">Start Date</label>
+                    <input type="date" id="start-date" class="w-full p-2 border rounded-lg text-sm bg-white focus:ring-indigo-500">
+                </div>
+                <div>
+                    <label for="end-date" class="block text-[10px] font-medium text-gray-500 uppercase">End Date</label>
+                    <input type="date" id="end-date" class="w-full p-2 border rounded-lg text-sm bg-white focus:ring-indigo-500">
                 </div>
             </div>
 
@@ -171,64 +173,61 @@
             <div class="space-y-4">
                 <!-- Admin PIN Entry -->
                 <div id="admin-lock-screen">
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Enter Admin PIN to Edit</label>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Admin PIN Daalein</label>
                     <input type="password" id="admin-pin-input" class="w-full p-3 border rounded-lg text-center tracking-widest text-xl" placeholder="****">
-                    <button onclick="verifyAdmin()" class="w-full mt-3 bg-gray-800 text-white py-3 rounded-lg font-bold">Unlock Settings</button>
+                    <button onclick="verifyAdmin()" class="w-full mt-3 bg-gray-800 text-white py-3 rounded-lg font-bold">Settings Unlock Karein</button>
                 </div>
 
                 <!-- Protected Controls -->
                 <div id="admin-controls" class="hidden space-y-6">
                     
                     <div class="bg-blue-50 p-4 rounded-xl">
-                        <label class="block text-xs font-bold text-blue-600 uppercase mb-2">1. Set Office Location (Geofence)</label>
+                        <label class="block text-xs font-bold text-blue-600 uppercase mb-2">1. Office Location Set Karein (Geofence)</label>
                         <p class="text-xs text-gray-500 mb-2">Current: <span id="office-coords" class="font-mono">Loading...</span></p>
-                        <button onclick="setOfficeLocation()" class="w-full bg-blue-600 text-white py-2 rounded-lg text-sm font-semibold">📍 Set My GPS as Office</button>
+                        <button onclick="setOfficeLocation()" class="w-full bg-blue-600 text-white py-2 rounded-lg text-sm font-semibold">📍 Meri GPS Office Location Set Karein</button>
                     </div>
 
                     <div class="bg-purple-50 p-4 rounded-xl">
-                        <label class="block text-xs font-bold text-purple-600 uppercase mb-2">2. Daily Class Code (QR Check)</label>
+                        <label class="block text-xs font-bold text-purple-600 uppercase mb-2">2. Daily Class Code (Security)</label>
                         <input type="text" id="daily-code-input" class="w-full p-2 border rounded mb-2 text-center font-mono font-bold" placeholder="e.g. 1234">
-                        <button onclick="saveDailyCode()" class="w-full bg-purple-600 text-white py-2 rounded-lg text-sm font-semibold">💾 Save Code</button>
-                        <p class="text-[10px] text-gray-500 mt-2">Write this code on the board. Students must enter it to Check In.</p>
+                        <button onclick="saveDailyCode()" class="w-full bg-purple-600 text-white py-2 rounded-lg text-sm font-semibold">💾 Code Save Karein</button>
+                        <p class="text-[10px] text-gray-500 mt-2">Yeh code whiteboard par likhein. Students ko Check In ke liye yeh daalna hoga.</p>
                     </div>
 
                     <div class="bg-yellow-50 p-4 rounded-xl">
-                        <label class="block text-xs font-bold text-yellow-600 uppercase mb-3">3. Manage Class List (Dynamic)</label>
+                        <label class="block text-xs font-bold text-yellow-600 uppercase mb-3">3. Class List Manage Karein</label>
                         <div id="class-list-container" class="space-y-2 mb-3">
                             <!-- Classes will be listed here -->
                         </div>
                         <input type="text" id="new-class-input" class="w-full p-2 border rounded mb-2 text-sm" placeholder="e.g. History (H-101)">
-                        <button onclick="addNewClass()" class="w-full bg-yellow-600 text-white py-2 rounded-lg text-sm font-semibold">➕ Add New Class</button>
+                        <button onclick="addNewClass()" class="w-full bg-yellow-600 text-white py-2 rounded-lg text-sm font-semibold">➕ Nayi Class Jodein</button>
                     </div>
                     
                     <div class="bg-red-50 p-4 rounded-xl">
-                        <label class="block text-xs font-bold text-red-600 uppercase mb-2">4. Change Admin PIN</label>
-                        <input type="text" id="new-pin-input" class="w-full p-2 border rounded mb-2 text-center font-mono font-bold" placeholder="New PIN (e.g. 8747)">
-                        <button onclick="saveNewAdminPin()" class="w-full bg-red-600 text-white py-2 rounded-lg text-sm font-semibold">🔑 Save New PIN</button>
-                        <p class="text-[10px] text-gray-500 mt-2">Current PIN will be updated immediately.</p>
+                        <label class="block text-xs font-bold text-red-600 uppercase mb-2">4. Admin PIN Badlein</label>
+                        <input type="text" id="new-pin-input" class="w-full p-2 border rounded mb-2 text-center font-mono font-bold" placeholder="Naya PIN (e.g. 8747)">
+                        <button onclick="saveNewAdminPin()" class="w-full bg-red-600 text-white py-2 rounded-lg text-sm font-semibold">🔑 Naya PIN Save Karein</button>
+                        <p class="text-[10px] text-gray-500 mt-2">Current PIN turant update ho jayega.</p>
                     </div>
 
 
                     <div class="pt-2 border-t">
-                        <button onclick="auth.signOut();" class="w-full text-gray-600 py-2 text-sm font-bold">Log Out</button>
+                        <button onclick="handleSignOut()" class="w-full text-gray-600 py-2 text-sm font-bold">Log Out (Device Lock Hataayein)</button>
                     </div>
                 </div>
             </div>
         </div>
     </div>
-    
-    <!-- Camera Input (Hidden) -->
-    <input type="file" id="selfie-input" accept="image/*" capture="user" class="hidden">
 
     <!-- CODE ENTRY MODAL -->
     <div id="code-modal" class="hidden fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4 backdrop-blur-sm">
         <div class="bg-white rounded-2xl w-full max-w-xs p-6 shadow-2xl text-center">
             <h3 class="font-bold text-lg mb-2">Anti-Bunking Check</h3>
-            <p class="text-xs text-gray-500 mb-4">Enter the code written on the whiteboard.</p>
+            <p class="text-xs text-gray-500 mb-4">Whiteboard par likha code daalein.</p>
             <input type="number" id="student-code-input" class="w-full p-4 bg-gray-50 border-2 border-indigo-100 rounded-xl text-center text-2xl font-bold tracking-widest focus:ring-2 focus:ring-indigo-500 focus:outline-none" placeholder="0000">
             <div class="grid grid-cols-2 gap-3 mt-4">
                 <button onclick="document.getElementById('code-modal').classList.add('hidden')" class="py-3 text-gray-500 font-bold text-sm">Cancel</button>
-                <button onclick="confirmCheckIn()" class="py-3 bg-indigo-600 text-white rounded-xl font-bold text-sm shadow-lg">Verify</button>
+                <button onclick="confirmCheckIn()" class="py-3 bg-indigo-600 text-white rounded-xl font-bold text-sm shadow-lg">Verify Karein</button>
             </div>
         </div>
     </div>
@@ -237,10 +236,22 @@
     <div id="checkout-confirm-modal" class="hidden fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4 backdrop-blur-sm">
         <div class="bg-white rounded-2xl w-full max-w-xs p-6 shadow-2xl text-center">
             <h3 class="font-bold text-xl text-red-600 mb-2">Final Check Out?</h3>
-            <p class="text-sm text-gray-700 mb-6">Are you sure you want to Check Out now? This action cannot be undone by you.</p>
+            <p class="text-sm text-gray-700 mb-6">Kya aap pakka Check Out karna chahte hain? Yeh action aap wapas nahi kar sakte.</p>
             <div class="grid grid-cols-2 gap-3 mt-4">
                 <button onclick="document.getElementById('checkout-confirm-modal').classList.add('hidden')" class="py-3 bg-gray-200 text-gray-700 rounded-xl font-bold text-sm">Cancel</button>
-                <button onclick="handleAction('OUT', null)" class="py-3 bg-red-600 text-white rounded-xl font-bold text-sm shadow-lg">Yes, Check Out</button>
+                <button onclick="handleAction('OUT')" class="py-3 bg-red-600 text-white rounded-xl font-bold text-sm shadow-lg">Haan, Check Out Karein</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- GENERIC CONFIRMATION MODAL (For Admin Actions) -->
+    <div id="action-confirm-modal" class="hidden fixed inset-0 z-[70] bg-black/80 flex items-center justify-center p-4 backdrop-blur-sm">
+        <div class="bg-white rounded-2xl w-full max-w-xs p-6 shadow-2xl text-center">
+            <h3 id="confirm-title" class="font-bold text-xl text-red-600 mb-2">Action Confirm Karein</h3>
+            <p id="confirm-message" class="text-sm text-gray-700 mb-6">Kya aap pakka is admin action ke saath aage badhna chahte hain?</p>
+            <div class="grid grid-cols-2 gap-3 mt-4">
+                <button onclick="document.getElementById('action-confirm-modal').classList.add('hidden')" class="py-3 bg-gray-200 text-gray-700 rounded-xl font-bold text-sm">Cancel</button>
+                <button id="confirm-yes-btn" class="py-3 bg-red-600 text-white rounded-xl font-bold text-sm shadow-lg">Haan, Aage Badhein</button>
             </div>
         </div>
     </div>
@@ -252,10 +263,13 @@
         <span id="toast-message" class="text-sm font-medium">Notification</span>
     </div>
 
-    <script>
+    <script type="module">
         // ==========================================
-        //  YOUR FIREBASE CONFIGURATION (EMBEDDED)
+        //  FIREBASE SETUP (Modular Imports Used)
         // ==========================================
+        const { initializeApp, getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, onAuthStateChanged, signOut, updateProfile, getFirestore, doc, setDoc, getDoc, updateDoc, collection, query, where, orderBy, onSnapshot, serverTimestamp, deleteDoc } = window.firebaseApp;
+        
+        // Configuration from the user's provided code
         const firebaseConfig = {
             apiKey: "AIzaSyCk_VP7qpKaG-OysS_Dg8QDrj2JkDJ5USU",
             authDomain: "mkgp-eattendence.firebaseapp.com",
@@ -264,27 +278,27 @@
             messagingSenderId: "297606251056",
             appId: "1:297606251056:web:b9bb146169f0b5281de3f5"
         };
+        
+        // Initialize App and Services
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        const auth = getAuth(app);
 
         // ==========================================
-        //  CONFIG
+        //  GLOBAL CONFIG & STATE
         // ==========================================
         const GEOFENCE_RADIUS = 100; // Meters
-        const DEFAULT_ADMIN_PIN = "8747"; // Starting PIN
-
-        // Init Firebase
-        if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
-        const db = firebase.firestore();
-        const auth = firebase.auth();
-        const storage = firebase.storage(); // Initialize Storage
-
+        const DEFAULT_ADMIN_PIN = "8747"; 
+        
         let currentUser = null;
         let officeLocation = null;
         let dailyCode = null;
-        let currentAdminPin = DEFAULT_ADMIN_PIN; // Will be overwritten by Firestore
+        let currentAdminPin = DEFAULT_ADMIN_PIN; 
         let isAdminUnlocked = false;
+        let authMode = 'login'; // 'login' or 'register'
 
         // ------------------------------------------------
-        // 1. AUTH LOGIC (Email/Password)
+        // 1. AUTH & DEVICE LOCK LOGIC (Email/Password) - SABSE BADA BADLAV
         // ------------------------------------------------
         
         function getInitials(name) {
@@ -296,82 +310,119 @@
             return parts[0][0].toUpperCase();
         }
 
-        function handleLogin() {
-            const email = document.getElementById('auth-email').value.trim();
-            const password = document.getElementById('auth-password').value.trim();
-            if (!email || !password) return showToast('Email and Password required', 'error');
-
-            auth.signInWithEmailAndPassword(email, password)
-                .then(userCredential => {
-                    initApp(userCredential.user);
-                })
-                .catch(e => {
-                    if (e.code === 'auth/user-not-found') {
-                        showToast('User not found. Please Register.', 'error');
-                    } else if (e.code === 'auth/wrong-password') {
-                         showToast('Wrong password.', 'error');
-                    } else {
-                        showToast('Login Failed. Check Email/Password Auth setting.', 'error');
-                    }
-                });
-        }
-        
-        function handleRegister() {
-            const email = document.getElementById('auth-email').value.trim();
-            const password = document.getElementById('auth-password').value.trim();
-            const name = document.getElementById('auth-name').value.trim();
-            if (!email || !password || !name) return showToast('All fields required for registration', 'error');
-
-            auth.createUserWithEmailAndPassword(email, password)
-                .then(userCredential => {
-                    // Update user display name in Firebase Auth
-                    return userCredential.user.updateProfile({ displayName: name });
-                })
-                .then(() => {
-                    // Save name locally for quick access
-                    localStorage.setItem('user_display_name', name);
-                    showToast('Registration Successful! Logging in...', 'success');
-                    // Log in is automatic after registration
-                })
-                .catch(e => {
-                    showToast('Registration Failed: ' + e.message, 'error');
-                });
+        function toggleAuthMode() {
+            authMode = authMode === 'login' ? 'register' : 'login';
+            document.getElementById('auth-name-input').classList.toggle('hidden');
+            
+            if (authMode === 'register') {
+                document.getElementById('auth-mode-text').innerText = "Naya Account Banayein";
+                document.getElementById('auth-main-btn').innerText = "Register Karen";
+                document.getElementById('auth-toggle-btn').innerText = "Pehle Se Account Hai (Sign In)";
+            } else {
+                document.getElementById('auth-mode-text').innerText = "Sign In to continue";
+                document.getElementById('auth-main-btn').innerText = "Sign In";
+                document.getElementById('auth-toggle-btn').innerText = "Naya Account Banayein (Register)";
+            }
         }
 
-        auth.onAuthStateChanged(user => {
+        async function authenticateUser() {
+            const email = document.getElementById('auth-email-input').value.trim();
+            const password = document.getElementById('auth-password-input').value;
+            const name = document.getElementById('auth-name-input').value.trim();
+
+            if (!email || !password || (authMode === 'register' && !name)) {
+                return showToast('Sabhi Fields bharein.', 'error');
+            }
+            if (password.length < 6) {
+                return showToast('Password kam se kam 6 characters ka hona chahiye.', 'error');
+            }
+            
+            // Check Device Lock against the UID that the user is trying to sign in with
+            const lockedUID = localStorage.getItem('locked_user_uid');
+            const potentialUID = btoa(email); // Simple pseudo-UID for device check before actual login
+            
+            if (lockedUID && lockedUID !== potentialUID) {
+                document.getElementById('device-lock-msg').classList.remove('hidden');
+                return;
+            }
+
+            try {
+                if (authMode === 'register') {
+                    showToast('Register ho raha hai...', 'info');
+                    const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+                    
+                    // 1. Save Display Name to Firebase Auth
+                    await updateProfile(userCredential.user, { displayName: name });
+                    
+                    // 2. Save User details to Firestore (optional but good practice)
+                    await setDoc(doc(db, 'users', userCredential.user.uid), {
+                        name: name,
+                        email: email,
+                        registeredAt: serverTimestamp()
+                    });
+                    showToast('Registration Safaltapoorvak ho gaya. Welcome!', 'success');
+
+                } else { // Login Mode
+                    showToast('Sign In ho raha hai...', 'info');
+                    await signInWithEmailAndPassword(auth, email, password);
+                    // Auth state change handler will run next
+                }
+
+            } catch (error) {
+                let msg = 'Authentication mein error. Kripya dobara try karein.';
+                if (error.code === 'auth/user-not-found') msg = 'Yeh email registered nahi hai.';
+                if (error.code === 'auth/wrong-password') msg = 'Galat Password.';
+                if (error.code === 'auth/email-already-in-use') msg = 'Yeh email pehle se registered hai.';
+                
+                showToast(msg, 'error');
+                console.error("Auth Error:", error);
+            }
+        }
+
+        onAuthStateChanged(auth, async user => {
             if (user) {
-                const name = user.displayName || localStorage.getItem('user_display_name') || 'User';
-                localStorage.setItem('user_display_name', name); // Ensure name is saved locally
+                // Device Lock logic: Lock device to the successfully authenticated UID
+                localStorage.setItem('locked_user_uid', user.uid);
                 initApp(user);
             } else {
-                document.getElementById('login-screen').classList.remove('hidden');
+                currentUser = null;
+                document.getElementById('auth-screen').classList.remove('hidden');
                 document.getElementById('app-content').classList.add('hidden');
             }
         });
 
         async function initApp(user) {
             currentUser = user;
-            const name = user.displayName || localStorage.getItem('user_display_name');
-
-            document.getElementById('login-screen').classList.add('hidden');
+            document.getElementById('auth-screen').classList.add('hidden');
             document.getElementById('app-content').classList.remove('hidden');
+            
+            const name = user.displayName || user.email.split('@')[0]; // Use displayName if available
             
             document.getElementById('display-name').innerText = name;
             document.getElementById('user-initial').innerText = getInitials(name);
 
+            // Set default dates for the filter to today
+            const today = new Date().toLocaleDateString('en-CA');
+            document.getElementById('start-date').value = today;
+            document.getElementById('end-date').value = today;
+
             listenToSettings(); 
             listenToClasses();
-            
-            loadHistory();
+            filterHistory(); // Initial history load
             lucide.createIcons();
+        }
+        
+        function handleSignOut() {
+            localStorage.removeItem('locked_user_uid');
+            signOut(auth);
+            // Reload page is handled by onAuthStateChanged if successful
         }
 
         // ------------------------------------------------
-        // 2. CORE ATTENDANCE LOGIC (Check-In/Out & Selfie)
+        // 2. CORE ATTENDANCE LOGIC
         // ------------------------------------------------
         
         let todayDocId = null;
-        let selfieFile = null; // Holds the image file object temporarily
 
         function updateClassUI() {
             const cls = document.getElementById('class-select').value;
@@ -387,11 +438,14 @@
             const dateStr = new Date().toLocaleDateString('en-CA').replace(/\//g, '-'); 
             const cls = document.getElementById('class-select').value;
             
-            db.collection('attendance')
-              .where('uid', '==', currentUser.uid)
-              .where('dateId', '==', dateStr)
-              .where('class', '==', cls)
-              .get().then(snap => {
+            const q = query(
+                collection(db, 'attendance'),
+                where('uid', '==', currentUser.uid),
+                where('dateId', '==', dateStr),
+                where('class', '==', cls)
+            );
+            
+            getDocs(q).then(snap => {
                   if (!snap.empty) {
                       const data = snap.docs[0].data();
                       todayDocId = snap.docs[0].id;
@@ -405,123 +459,105 @@
                       todayDocId = null;
                       setStatusUI("FRESH");
                   }
-              });
-        }
-        
-        // Step 1: Trigger Camera Input
-        function prepareCheckIn() {
-             if (document.getElementById('btn-in').disabled) return;
-             document.getElementById('selfie-input').click();
+            });
         }
 
-        // Step 2: Handle file selection and proceed to Geofencing
-        document.getElementById('selfie-input').addEventListener('change', function(event) {
-            selfieFile = event.target.files[0];
-            if (selfieFile) {
-                // Now check GPS and code
-                handleAction('IN', selfieFile);
-            } else {
-                showToast("Selfie capture cancelled.", 'error');
+        function setStatusUI(status, inTime, outTime) {
+            const btnIn = document.getElementById('btn-in');
+            const btnOut = document.getElementById('btn-out');
+            const statusTxt = document.getElementById('status-text');
+            const timeLog = document.getElementById('time-log');
+
+            btnIn.classList.remove('opacity-50', 'cursor-not-allowed', 'btn-pulse');
+            btnOut.classList.remove('opacity-50', 'cursor-not-allowed');
+
+            if (status === "FRESH") {
+                btnIn.disabled = false; btnIn.classList.add('btn-pulse');
+                btnOut.disabled = true; btnOut.classList.add('opacity-50');
+                statusTxt.innerText = "Ready to Check In";
+                statusTxt.className = "text-xl font-bold text-indigo-900";
+                timeLog.innerText = "Kripya Class Select Karein.";
+            } else if (status === "CHECKED_IN") {
+                btnIn.disabled = true; btnIn.classList.add('opacity-50', 'cursor-not-allowed');
+                btnIn.classList.remove('btn-pulse');
+                btnOut.disabled = false; 
+                statusTxt.innerText = "Checked In ✅";
+                statusTxt.className = "text-xl font-bold text-green-600";
+                timeLog.innerText = `In: ${inTime}`;
+            } else if (status === "COMPLETED") {
+                btnIn.disabled = true; btnOut.disabled = true;
+                btnIn.classList.add('opacity-50'); btnOut.classList.add('opacity-50');
+                btnIn.classList.remove('btn-pulse');
+                statusTxt.innerText = "Class Pura Hua 🎉";
+                statusTxt.className = "text-xl font-bold text-indigo-600";
+                timeLog.innerText = `In: ${inTime} | Out: ${outTime}`;
             }
-        });
+        }
 
-        // Step 3: Handle Geofencing and Code Check
-        function handleAction(type, file) {
+        function confirmCheckOut() {
+            if (document.getElementById('btn-out').disabled) return;
+            document.getElementById('checkout-confirm-modal').classList.remove('hidden');
+        }
+
+        function handleAction(type) {
             document.getElementById('checkout-confirm-modal').classList.add('hidden');
 
-            if (!officeLocation) return showToast("⚠️ Admin: Set Office Location first", "error");
-            if (document.getElementById('class-select').value === "") return showToast("Please select a class first.", "error");
+            if (!officeLocation) return showToast("⚠️ Admin: Office Location Set Nahi Hai", "error");
+            if (document.getElementById('class-select').value === "") return showToast("Kripya Class Select Karein.", "error");
             
-            showToast("Acquiring GPS...", 'info');
-            
-            // Check Geofencing
+            showToast("GPS Location Laa Raha Hai...", "info");
             navigator.geolocation.getCurrentPosition(pos => {
                 const dist = getDistance(pos.coords.latitude, pos.coords.longitude, officeLocation.lat, officeLocation.lng);
+                
                 document.getElementById('gps-indicator').innerText = `GPS: ±${Math.round(dist)}m`;
 
                 if (dist > GEOFENCE_RADIUS) {
-                    selfieFile = null; // Clear file on fail
-                    return showToast(`❌ Too far! You are ${Math.round(dist)}m away.`, "error");
+                    return showToast(`❌ Bahut Door! Aap ${Math.round(dist)}m door hain.`, "error");
                 }
-                
-                // If type is IN (Check In)
+
                 if (type === 'IN') {
-                    if (!dailyCode) return showToast("❌ Admin has not set the Daily Code yet.", "error");
+                    if (!dailyCode) return showToast("❌ Admin ne Daily Code Set Nahi Kiya Hai.", "error");
                     document.getElementById('code-modal').classList.remove('hidden');
-                } 
-                // If type is OUT (Check Out)
-                else {
+                } else {
                     processCheckOut();
                 }
 
-            }, err => {
-                selfieFile = null;
-                showToast("GPS Error: Please enable location services.", "error");
-            }, {enableHighAccuracy: true});
+            }, err => showToast("GPS Error: Kripya location services ON karein.", 'error'), {enableHighAccuracy: true});
         }
-        
-        // Step 4: Handle Code Confirmation and final Check-In
+
         function confirmCheckIn() {
             const input = document.getElementById('student-code-input').value;
             if (input !== dailyCode) {
-                selfieFile = null;
-                return showToast("❌ Wrong Class Code! Ask Teacher.", "error");
+                return showToast("❌ Galat Class Code! Teacher se poochein.", 'error');
             }
             
             document.getElementById('code-modal').classList.add('hidden');
-            document.getElementById('student-code-input').value = "";
-            
-            if (selfieFile) {
-                processCheckIn(selfieFile);
-            } else {
-                 showToast("Error: Selfie file not found. Try again.", 'error');
-            }
+            document.getElementById('student-code-input').value = ""; 
+            processCheckIn();
         }
 
-        // Step 5: Upload Selfie and Save Record
-        async function processCheckIn(file) {
-            showToast("Uploading Selfie & Marking Attendance...", 'info');
-
+        async function processCheckIn() {
             const dateStr = new Date().toLocaleDateString('en-CA').replace(/\//g, '-');
             const cls = document.getElementById('class-select').value;
+            const name = currentUser.displayName || currentUser.email;
             
-            let photoUrl = '';
-            
-            // Upload file to Firebase Storage
-            const storageRef = storage.ref();
-            const fileExtension = file.name.split('.').pop();
-            const fileName = `${currentUser.uid}-${cls}-${Date.now()}.${fileExtension}`;
-            const imageRef = storageRef.child(`selfies/${fileName}`);
-            
-            try {
-                // Upload task
-                await imageRef.put(file);
-                photoUrl = await imageRef.getDownloadURL();
-            } catch (e) {
-                showToast("Photo upload failed: " + e.message, 'error');
-                return;
-            }
-
             const record = {
                 uid: currentUser.uid,
-                name: currentUser.displayName,
-                email: currentUser.email,
+                name: name,
                 class: cls,
                 dateId: dateStr,
                 checkInTime: new Date().toLocaleTimeString(),
                 checkOutTime: null,
-                timestamp: firebase.firestore.FieldValue.serverTimestamp(),
-                locationVerified: 'YES',
-                photoUrl: photoUrl // Save the URL of the selfie
+                timestamp: serverTimestamp(),
+                locationVerified: 'YES' 
             };
 
             try {
-                await db.collection('attendance').add(record);
-                showToast("Check-In Complete! Selfie Saved.", "success");
-                selfieFile = null;
+                await addDoc(collection(db, 'attendance'), record);
+                showToast("Check In Safaltapoorvak Ho Gaya!", 'success');
                 checkTodayStatus();
             } catch (e) {
-                showToast("DB Save Error: " + e.message, "error");
+                showToast("DB Save Error: " + e.message, 'error');
             }
         }
 
@@ -529,33 +565,42 @@
             if (!todayDocId) return;
             
             try {
-                await db.collection('attendance').doc(todayDocId).update({
+                await updateDoc(doc(db, 'attendance', todayDocId), {
                     checkOutTime: new Date().toLocaleTimeString()
                 });
-                showToast("Checked Out! Have a nice day.", "success");
+                showToast("Check Out Ho Gaya! Din Shubh Ho.", 'success');
                 checkTodayStatus();
             } catch (e) {
-                 showToast("DB Update Error: " + e.message, "error");
+                 showToast("DB Update Error: " + e.message, 'error');
             }
         }
+
+        // ------------------------------------------------
+        // 3. ADMIN & SETTINGS
+        // ------------------------------------------------
         
-        function confirmCheckOut() {
-            if (document.getElementById('btn-out').disabled) return;
-            document.getElementById('checkout-confirm-modal').classList.remove('hidden');
+        let confirmActionCallback = null;
+        function showActionConfirm(title, message, callback) {
+            confirmActionCallback = callback;
+            document.getElementById('confirm-title').innerText = title;
+            document.getElementById('confirm-message').innerText = message;
+            document.getElementById('action-confirm-modal').classList.remove('hidden');
         }
 
+        document.getElementById('confirm-yes-btn').onclick = () => {
+            document.getElementById('action-confirm-modal').classList.add('hidden');
+            if (confirmActionCallback) {
+                confirmActionCallback();
+            }
+        };
 
-        // ------------------------------------------------
-        // 3. ADMIN & SETTINGS (Same as previous, omitted for brevity)
-        // ------------------------------------------------
-        
         function listenToSettings() {
-             db.collection('settings').doc('config').onSnapshot(doc => {
-                if (doc.exists) {
-                    const data = doc.data();
+             onSnapshot(doc(db, 'settings', 'config'), (docSnap) => {
+                if (docSnap.exists()) {
+                    const data = docSnap.data();
                     officeLocation = data.location;
                     dailyCode = data.dailyCode;
-                    currentAdminPin = data.adminPin || DEFAULT_ADMIN_PIN; 
+                    currentAdminPin = data.adminPin || DEFAULT_ADMIN_PIN;
                     document.getElementById('office-coords').innerText = officeLocation ? "Set ✅" : "Not Set";
                     document.getElementById('daily-code-input').value = dailyCode || "";
                 }
@@ -563,8 +608,8 @@
         }
         
         function listenToClasses() {
-             db.collection('settings').doc('classes').onSnapshot(doc => {
-                const classes = doc.exists ? doc.data().list : [];
+             onSnapshot(doc(db, 'settings', 'classes'), (docSnap) => {
+                const classes = docSnap.exists() ? docSnap.data().list : [];
                 populateClassDropdown(classes);
                 populateClassAdminList(classes);
             });
@@ -572,7 +617,7 @@
 
         function populateClassDropdown(classes) {
             const select = document.getElementById('class-select');
-            select.innerHTML = '<option value="">-- Select Class --</option>'; // Reset
+            select.innerHTML = '<option value="">-- Class Select Karein --</option>'; 
             
             classes.sort((a, b) => a.localeCompare(b)).forEach(cls => {
                 const option = document.createElement('option');
@@ -587,7 +632,7 @@
             listContainer.innerHTML = '';
             
             if (classes.length === 0) {
-                listContainer.innerHTML = '<p class="text-sm text-gray-500">No classes defined yet.</p>';
+                listContainer.innerHTML = '<p class="text-sm text-gray-500">Koi class define nahi hai.</p>';
                 return;
             }
 
@@ -596,7 +641,7 @@
                 item.className = 'flex justify-between items-center bg-white p-2 rounded-lg border border-yellow-200 shadow-sm';
                 item.innerHTML = `
                     <span class="text-sm font-medium text-gray-800">${cls}</span>
-                    <button onclick="deleteClass('${cls}')" class="text-red-500 hover:text-red-700 p-1">
+                    <button onclick="requestDeleteClass('${cls}')" class="text-red-500 hover:text-red-700 p-1">
                         <i data-lucide="trash-2" class="w-4 h-4"></i>
                     </button>
                 `;
@@ -608,42 +653,48 @@
         async function addNewClass() {
             const input = document.getElementById('new-class-input');
             const className = input.value.trim();
-            if (!className) return showToast("Class name cannot be empty.", "error");
+            if (!className) return showToast("Class ka naam khali nahi ho sakta.", 'error');
 
-            const docRef = db.collection('settings').doc('classes');
+            const docRef = doc(db, 'settings', 'classes');
             
             try {
-                const doc = await docRef.get();
-                let currentList = doc.exists ? doc.data().list : [];
+                const docSnap = await getDoc(docRef);
+                let currentList = docSnap.exists() ? docSnap.data().list : [];
                 
                 if (currentList.includes(className)) {
-                    return showToast("Class already exists!", "error");
+                    return showToast("Class pehle se maujood hai!", 'error');
                 }
                 
                 currentList.push(className);
-                await docRef.set({ list: currentList });
+                await setDoc(docRef, { list: currentList });
                 input.value = '';
-                showToast(`'${className}' added successfully!`, "success");
+                showToast(`'${className}' safaltapoorvak jod di gayi!`, 'success');
             } catch (e) {
-                showToast("Error adding class: " + e.message, "error");
+                showToast("Class jodne mein error: " + e.message, 'error');
             }
+        }
+        
+        function requestDeleteClass(className) {
+            showActionConfirm(
+                "Class Hataayein",
+                `Kya aap pakka is class ko hamesha ke liye hatana chahte hain: ${className}?`,
+                () => deleteClass(className) 
+            );
         }
 
         async function deleteClass(className) {
-            if (!confirm(`Are you sure you want to delete the class: ${className}?`)) return;
-            
-            const docRef = db.collection('settings').doc('classes');
+            const docRef = doc(db, 'settings', 'classes');
             
             try {
-                const doc = await docRef.get();
-                let currentList = doc.exists ? doc.data().list : [];
+                const docSnap = await getDoc(docRef);
+                let currentList = docSnap.exists() ? docSnap.data().list : [];
                 
                 const newList = currentList.filter(cls => cls !== className);
                 
-                await docRef.set({ list: newList });
-                showToast(`'${className}' deleted!`, "success");
+                await setDoc(docRef, { list: newList });
+                showToast(`'${className}' hata di gayi!`, 'success');
             } catch (e) {
-                showToast("Error deleting class: " + e.message, "error");
+                showToast("Class hatane mein error: " + e.message, 'error');
             }
         }
 
@@ -654,100 +705,102 @@
                 isAdminUnlocked = true;
                 document.getElementById('admin-lock-screen').classList.add('hidden');
                 document.getElementById('admin-controls').classList.remove('hidden');
-                showToast("Admin Unlocked", "success");
-                loadHistory(); 
+                showToast("Admin Unlock Ho Gaya", 'success');
+                filterHistory(); // Reload history with potential admin rights
             } else {
-                showToast("Wrong PIN", "error");
+                showToast("Galat PIN", 'error');
             }
         }
         
         async function saveNewAdminPin() {
             const newPin = document.getElementById('new-pin-input').value.trim();
-            if (newPin.length < 4) return showToast("PIN must be at least 4 digits.", "error");
+            if (newPin.length < 4) return showToast("PIN kam se kam 4 digits ka hona chahiye.", 'error');
             
-            await db.collection('settings').doc('config').set({ adminPin: newPin }, { merge: true });
+            await setDoc(doc(db, 'settings', 'config'), { adminPin: newPin }, { merge: true });
             currentAdminPin = newPin; 
             document.getElementById('new-pin-input').value = ''; 
-            showToast("New Admin PIN Saved! (Remember it: " + newPin + ")", "success");
+            showToast("Naya Admin PIN Save Ho Gaya! (Yaad Rakhein: " + newPin + ")", 'success');
         }
 
 
         function setOfficeLocation() {
             navigator.geolocation.getCurrentPosition(async pos => {
                 const loc = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-                await db.collection('settings').doc('config').set({ location: loc }, { merge: true });
+                await setDoc(doc(db, 'settings', 'config'), { location: loc }, { merge: true });
                 officeLocation = loc;
-                document.getElementById('office-coords').innerText = "Updated Just Now ✅";
-                showToast("Office Location Updated!", "success");
-            }, (err) => showToast("GPS Error: " + err.message, "error"), {enableHighAccuracy: true});
+                document.getElementById('office-coords').innerText = "Abhi Update Hua ✅";
+                showToast("Office Location Update Ho Gayi!", 'success');
+            }, (err) => showToast("GPS Error: " + err.message, 'error'), {enableHighAccuracy: true});
         }
 
         async function saveDailyCode() {
             const code = document.getElementById('daily-code-input').value;
-            await db.collection('settings').doc('config').set({ dailyCode: code }, { merge: true });
+            await setDoc(doc(db, 'settings', 'config'), { dailyCode: code }, { merge: true });
             dailyCode = code;
-            showToast("Class Code Updated!", "success");
+            showToast("Class Code Update Ho Gaya!", 'success');
+        }
+        
+        function requestDeleteRecord(id) {
+            showActionConfirm(
+                "Record Hataayein",
+                "Admin: Kya aap pakka is record ko hamesha ke liye hatana chahte hain?",
+                () => deleteRecord(id) 
+            );
         }
 
         async function deleteRecord(id) {
-            if (!confirm("Admin: Are you sure you want to delete this record?")) return; 
             try {
-                await db.collection('attendance').doc(id).delete();
-                showToast("Record Deleted", "success");
+                await deleteDoc(doc(db, 'attendance', id));
+                showToast("Record Safaltapoorvak Hata Diya Gaya", 'success');
             } catch (e) {
-                showToast("Delete Error: " + e.message, "error");
+                showToast("Record hatane mein error: " + e.message, 'error');
             }
         }
 
         // ------------------------------------------------
-        // 4. HISTORY & UTILS (Report Filtering)
+        // 4. HISTORY & ADVANCED REPORTING FILTERS
         // ------------------------------------------------
 
-        function loadHistory(isFiltered = false) {
+        function filterHistory() {
+            const startDate = document.getElementById('start-date').value;
+            const endDate = document.getElementById('end-date').value;
             const list = document.getElementById('history-list');
-            list.innerHTML = '<div class="text-center text-gray-400 py-4">Loading...</div>';
             
-            let query = db.collection('attendance').orderBy('dateId', 'desc').orderBy('timestamp', 'desc');
-            
-            // --- NEW: Filter Logic ---
-            const startDate = document.getElementById('filter-start-date').value;
-            const endDate = document.getElementById('filter-end-date').value;
-            
-            if (isFiltered && startDate && endDate) {
-                query = query.where('dateId', '>=', startDate).where('dateId', '<=', endDate);
-            } else {
-                 // Default to show only the last 30 entries if not filtering by date
-                 query = query.limit(30);
+            list.innerHTML = '<div class="text-center text-gray-400 text-sm py-4">Data filter ho raha hai...</div>';
+
+            let q = query(
+                collection(db, 'attendance'),
+                orderBy('dateId', 'desc') // Order by date string
+            );
+
+            // Apply filters based on date inputs
+            if (startDate) {
+                q = query(q, where('dateId', '>=', startDate));
             }
-            // --- END NEW: Filter Logic ---
+            if (endDate) {
+                q = query(q, where('dateId', '<=', endDate));
+            }
 
-
-            query.onSnapshot(snap => {
+            // Real-time listener on the filtered query
+            onSnapshot(q, snap => {
                   list.innerHTML = '';
                   window.exportDataArr = []; 
                   
-                  snap.forEach(doc => {
-                      const d = doc.data();
+                  snap.forEach(docSnap => {
+                      const d = docSnap.data();
                       
-                      // Check if photo URL exists
-                      const photoIcon = d.photoUrl 
-                        ? `<a href="${d.photoUrl}" target="_blank" class="text-indigo-500 hover:text-indigo-700" title="View Selfie"><i data-lucide="image" class="w-4 h-4"></i></a>` 
-                        : '';
-
                       const exportRow = {
                           'Name': d.name,
-                          'Email': d.email,
                           'Class': d.class,
                           'Date': d.dateId,
                           'Check In': d.checkInTime,
                           'Check Out': d.checkOutTime || 'N/A',
-                          'Location Status': d.locationVerified,
-                          'Photo URL': d.photoUrl || 'N/A' // Added URL to export
+                          'Location Status': d.locationVerified 
                       };
                       window.exportDataArr.push(exportRow);
                       
                       const deleteBtn = isAdminUnlocked 
-                        ? `<button onclick="deleteRecord('${doc.id}')" class="text-red-500 hover:bg-red-50 p-2 rounded"><i data-lucide="trash-2" class="w-4 h-4"></i></button>` 
+                        ? `<button onclick="requestDeleteRecord('${docSnap.id}')" class="text-red-500 hover:bg-red-50 p-2 rounded"><i data-lucide="trash-2" class="w-4 h-4"></i></button>` 
                         : '';
 
                       const statusColor = d.checkOutTime ? 'text-indigo-500' : 'text-green-500';
@@ -758,10 +811,9 @@
                             <div>
                                 <p class="font-bold text-gray-800">${d.name}</p>
                                 <p class="text-xs text-gray-400">${d.class} • ${d.dateId}</p>
-                                <p class="text-[10px] ${statusColor} mt-1 flex items-center"><i data-lucide="${statusIcon}" class="w-3 h-3 mr-1"></i> ${d.checkOutTime ? 'Completed' : 'Active'}</p>
+                                <p class="text-[10px] ${statusColor} mt-1 flex items-center"><i data-lucide="${statusIcon}" class="w-3 h-3 mr-1"></i> ${d.checkOutTime ? 'Pura Hua' : 'Active'}</p>
                             </div>
                             <div class="text-right flex items-center gap-3">
-                                ${photoIcon}
                                 <div>
                                     <p class="text-sm font-bold text-gray-700">IN: ${d.checkInTime}</p>
                                     <p class="text-xs text-red-400">OUT: ${d.checkOutTime || 'N/A'}</p>
@@ -771,10 +823,14 @@
                         </div>`;
                       list.innerHTML += html;
                   });
-                  if (snap.empty) list.innerHTML = '<div class="text-center text-gray-400 py-10">No records found.</div>';
+                  if (snap.empty) list.innerHTML = '<div class="text-center text-gray-400 py-10">Is Date Range mein koi records nahi hain.</div>';
                   lucide.createIcons();
-              });
+              }, (error) => {
+                console.error("Firestore Listener Error:", error);
+                list.innerHTML = `<div class="text-center text-red-500 text-sm py-4">Data Load Error: ${error.message}</div>`;
+            });
         }
+
 
         // Haversine
         function getDistance(lat1, lon1, lat2, lon2) {
@@ -794,38 +850,44 @@
         function showToast(msg, type) {
             const t = document.getElementById('toast');
             document.getElementById('toast-message').innerText = msg;
-            t.classList.remove('opacity-0', 'translate-y-10', 'bg-red-800', 'bg-green-800', 'bg-gray-800');
-            t.classList.add(`bg-${type === 'success' ? 'green' : type === 'error' ? 'red' : 'gray'}-800`);
             
+            t.classList.remove('opacity-0', 'translate-y-10', 'bg-red-800', 'bg-green-800', 'bg-gray-800', 'bg-blue-800');
+            
+            if (type === 'success') {
+                t.classList.add('bg-green-800');
+            } else if (type === 'error') {
+                t.classList.add('bg-red-800');
+            } else {
+                 t.classList.add('bg-blue-800');
+            }
+            
+            t.classList.remove('opacity-0', 'translate-y-10');
             setTimeout(() => t.classList.add('opacity-0', 'translate-y-10'), 3000);
         }
 
         function exportData(type) {
-            if(!window.exportDataArr || window.exportDataArr.length === 0) return showToast("No Data", "error");
+            if(!window.exportDataArr || window.exportDataArr.length === 0) return showToast("Export ke liye koi Data nahi.", 'error');
             
-            // Define headers for the report
-            const headers = ['Name', 'Email', 'Class', 'Date', 'Check In', 'Check Out', 'Location Status', 'Photo URL']; 
-            const rows = window.exportDataArr.map(d => [d.Name, d.Email, d.Class, d.Date, d['Check In'], d['Check Out'], d['Location Status'], d['Photo URL']]);
-            
+            // Get the selected date range for the filename
+            const startDate = document.getElementById('start-date').value || 'Start';
+            const endDate = document.getElementById('end-date').value || 'End';
+            const fileName = `Attendance_Report_${startDate}_to_${endDate}`;
+
             if(type === 'xlsx') {
                 const ws = XLSX.utils.json_to_sheet(window.exportDataArr);
                 const wb = XLSX.utils.book_new();
                 XLSX.utils.book_append_sheet(wb, ws, "Attendance");
-                XLSX.writeFile(wb, "Attendance_Report.xlsx");
-                showToast("Excel Downloaded!", "success");
+                XLSX.writeFile(wb, fileName + ".xlsx");
+                showToast("Excel Download Ho Gaya!", 'success');
             } else {
                 const { jsPDF } = window.jspdf;
-                const doc = new jsPDF('landscape'); // Landscape for more columns
+                const doc = new jsPDF();
+                const headers = ['Name', 'Class', 'Date', 'Check In', 'Check Out', 'Location Status']; 
+                const rows = window.exportDataArr.map(d => [d.Name, d.Class, d.Date, d['Check In'], d['Check Out'], d['Location Status']]);
                 
-                doc.autoTable({ 
-                    head: [headers], 
-                    body: rows, 
-                    startY: 10,
-                    styles: { fontSize: 8 },
-                    columnStyles: { 7: { cellWidth: 30 } } // Make URL column wider
-                });
-                doc.save("Attendance_Report.pdf");
-                showToast("PDF Downloaded!", "success");
+                doc.autoTable({ head: [headers], body: rows, startY: 10, foot: [["Report generated by Attendance Pro", "", "", "", "", ""]] });
+                doc.save(fileName + ".pdf");
+                showToast("PDF Download Ho Gaya!", 'success');
             }
         }
     </script>
