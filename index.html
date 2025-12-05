@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Attendance Pro (Custom)</title>
+    <title>Attendance Pro (Final Secure)</title>
     
     <!-- Tailwind CSS (Aesthetics) -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -171,10 +171,17 @@
                         <input type="text" id="new-class-input" class="w-full p-2 border rounded mb-2 text-sm" placeholder="e.g. History (H-101)">
                         <button onclick="addNewClass()" class="w-full bg-yellow-600 text-white py-2 rounded-lg text-sm font-semibold">➕ Add New Class</button>
                     </div>
+                    
+                    <div class="bg-red-50 p-4 rounded-xl">
+                        <label class="block text-xs font-bold text-red-600 uppercase mb-2">4. Change Admin PIN</label>
+                        <input type="text" id="new-pin-input" class="w-full p-2 border rounded mb-2 text-center font-mono font-bold" placeholder="New PIN (e.g. 8747)">
+                        <button onclick="saveNewAdminPin()" class="w-full bg-red-600 text-white py-2 rounded-lg text-sm font-semibold">🔑 Save New PIN</button>
+                        <p class="text-[10px] text-gray-500 mt-2">Current PIN will be updated immediately.</p>
+                    </div>
 
 
                     <div class="pt-2 border-t">
-                        <button onclick="auth.signOut(); localStorage.clear(); window.location.reload();" class="w-full text-red-600 py-2 text-sm font-bold">Log Out (Clear Device Lock)</button>
+                        <button onclick="auth.signOut(); localStorage.clear(); window.location.reload();" class="w-full text-gray-600 py-2 text-sm font-bold">Log Out (Clear Device Lock)</button>
                     </div>
                 </div>
             </div>
@@ -214,11 +221,11 @@
         };
 
         // ==========================================
-        //  CONFIG (UPDATED PIN)
+        //  CONFIG
         // ==========================================
         const GEOFENCE_RADIUS = 100; // Meters
-        const ADMIN_PIN = "8747";    // NEW PIN
-        
+        const DEFAULT_ADMIN_PIN = "8747"; // Starting PIN (for first time setup)
+
         // Init Firebase
         if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
         const db = firebase.firestore();
@@ -227,6 +234,7 @@
         let currentUser = null;
         let officeLocation = null;
         let dailyCode = null;
+        let currentAdminPin = DEFAULT_ADMIN_PIN; // Will be overwritten by Firestore
         let isAdminUnlocked = false;
 
         // ------------------------------------------------
@@ -272,7 +280,6 @@
                     initApp(user, name);
                 } else {
                     auth.signOut();
-                    // window.location.reload(); // Don't force reload, let user enter name
                 }
             }
         });
@@ -285,14 +292,13 @@
             document.getElementById('display-name').innerText = name;
             document.getElementById('user-initial').innerText = getInitials(name);
 
-            // Start listening to dynamic settings
             listenToSettings(); 
             listenToClasses();
             
             loadHistory();
             lucide.createIcons();
         }
-        
+
         // ------------------------------------------------
         // 2. CORE ATTENDANCE LOGIC
         // ------------------------------------------------
@@ -310,7 +316,7 @@
                 setStatusUI("FRESH");
                 return;
             }
-            const dateStr = new Date().toLocaleDateString().replace(/\//g, '-');
+            const dateStr = new Date().toLocaleDateString('en-CA').replace(/\//g, '-');
             const cls = document.getElementById('class-select').value;
             
             db.collection('attendance')
@@ -404,7 +410,7 @@
         }
 
         async function processCheckIn() {
-            const dateStr = new Date().toLocaleDateString().replace(/\//g, '-');
+            const dateStr = new Date().toLocaleDateString('en-CA').replace(/\//g, '-'); // YYYY-MM-DD
             const cls = document.getElementById('class-select').value;
             const name = localStorage.getItem('user_display_name');
             
@@ -452,6 +458,10 @@
                     const data = doc.data();
                     officeLocation = data.location;
                     dailyCode = data.dailyCode;
+                    // --- NEW PIN LOGIC ---
+                    currentAdminPin = data.adminPin || DEFAULT_ADMIN_PIN;
+                    // --- END NEW PIN LOGIC ---
+
                     document.getElementById('office-coords').innerText = officeLocation ? "Set ✅" : "Not Set";
                     document.getElementById('daily-code-input').value = dailyCode || "";
                 }
@@ -546,7 +556,8 @@
 
         function verifyAdmin() {
             const pin = document.getElementById('admin-pin-input').value;
-            if (pin === ADMIN_PIN) {
+            // Check against dynamically loaded PIN
+            if (pin === currentAdminPin) { 
                 isAdminUnlocked = true;
                 document.getElementById('admin-lock-screen').classList.add('hidden');
                 document.getElementById('admin-controls').classList.remove('hidden');
@@ -556,6 +567,18 @@
                 showToast("Wrong PIN", "error");
             }
         }
+        
+        async function saveNewAdminPin() {
+            const newPin = document.getElementById('new-pin-input').value.trim();
+            if (newPin.length < 4) return showToast("PIN must be at least 4 digits.", "error");
+            
+            // Save the new PIN to Firestore
+            await db.collection('settings').doc('config').set({ adminPin: newPin }, { merge: true });
+            currentAdminPin = newPin; // Update local variable
+            document.getElementById('new-pin-input').value = ''; // Clear input
+            showToast("New Admin PIN Saved! (Remember it: " + newPin + ")", "success");
+        }
+
 
         function setOfficeLocation() {
             navigator.geolocation.getCurrentPosition(async pos => {
