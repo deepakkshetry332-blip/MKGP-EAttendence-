@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Attendance Pro (Final)</title>
+    <title>Attendance Pro (Custom)</title>
     
     <!-- Tailwind CSS (Aesthetics) -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -81,10 +81,7 @@
             <div class="mb-6">
                 <label class="text-xs font-bold text-gray-400 uppercase tracking-wide">Select Class</label>
                 <select id="class-select" onchange="updateClassUI()" class="w-full mt-1 p-3 bg-gray-50 border border-gray-200 rounded-xl font-semibold text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
-                    <option value="">-- Select Class --</option>
-                    <option value="Class A">Class A (Morning)</option>
-                    <option value="Class B">Class B (Afternoon)</option>
-                    <option value="Lab Session">Lab Session</option>
+                    <option value="">-- Loading Classes --</option>
                 </select>
             </div>
 
@@ -136,7 +133,7 @@
 
     <!-- ADMIN / SETTINGS MODAL -->
     <div id="settings-modal" class="hidden fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4 backdrop-blur-sm">
-        <div class="bg-white rounded-2xl w-full max-w-sm p-6 shadow-2xl">
+        <div class="bg-white rounded-2xl w-full max-w-sm p-6 shadow-2xl overflow-y-auto max-h-[90%]">
             <div class="flex justify-between items-center mb-6">
                 <h3 class="font-bold text-xl">Admin Controls</h3>
                 <button onclick="toggleSettings()" class="p-1 hover:bg-gray-100 rounded"><i data-lucide="x" class="w-6 h-6"></i></button>
@@ -151,19 +148,30 @@
                 </div>
 
                 <!-- Protected Controls -->
-                <div id="admin-controls" class="hidden space-y-4">
+                <div id="admin-controls" class="hidden space-y-6">
+                    
                     <div class="bg-blue-50 p-4 rounded-xl">
-                        <label class="block text-xs font-bold text-blue-600 uppercase mb-2">1. Set Office Location</label>
+                        <label class="block text-xs font-bold text-blue-600 uppercase mb-2">1. Set Office Location (Geofence)</label>
                         <p class="text-xs text-gray-500 mb-2">Current: <span id="office-coords" class="font-mono">Loading...</span></p>
                         <button onclick="setOfficeLocation()" class="w-full bg-blue-600 text-white py-2 rounded-lg text-sm font-semibold">📍 Set My GPS as Office</button>
                     </div>
 
                     <div class="bg-purple-50 p-4 rounded-xl">
-                        <label class="block text-xs font-bold text-purple-600 uppercase mb-2">2. Daily Class Code</label>
+                        <label class="block text-xs font-bold text-purple-600 uppercase mb-2">2. Daily Class Code (QR Check)</label>
                         <input type="text" id="daily-code-input" class="w-full p-2 border rounded mb-2 text-center font-mono font-bold" placeholder="e.g. 1234">
                         <button onclick="saveDailyCode()" class="w-full bg-purple-600 text-white py-2 rounded-lg text-sm font-semibold">💾 Save Code</button>
                         <p class="text-[10px] text-gray-500 mt-2">Write this code on the board. Students must enter it to Check In.</p>
                     </div>
+
+                    <div class="bg-yellow-50 p-4 rounded-xl">
+                        <label class="block text-xs font-bold text-yellow-600 uppercase mb-3">3. Manage Class List (Dynamic)</label>
+                        <div id="class-list-container" class="space-y-2 mb-3">
+                            <!-- Classes will be listed here -->
+                        </div>
+                        <input type="text" id="new-class-input" class="w-full p-2 border rounded mb-2 text-sm" placeholder="e.g. History (H-101)">
+                        <button onclick="addNewClass()" class="w-full bg-yellow-600 text-white py-2 rounded-lg text-sm font-semibold">➕ Add New Class</button>
+                    </div>
+
 
                     <div class="pt-2 border-t">
                         <button onclick="auth.signOut(); localStorage.clear(); window.location.reload();" class="w-full text-red-600 py-2 text-sm font-bold">Log Out (Clear Device Lock)</button>
@@ -206,11 +214,11 @@
         };
 
         // ==========================================
-        //  CONFIG
+        //  CONFIG (UPDATED PIN)
         // ==========================================
         const GEOFENCE_RADIUS = 100; // Meters
-        const ADMIN_PIN = "1234";    // PIN to access settings/delete
-
+        const ADMIN_PIN = "8747";    // NEW PIN
+        
         // Init Firebase
         if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
         const db = firebase.firestore();
@@ -253,7 +261,7 @@
                 localStorage.setItem('locked_user_name', name); // Lock device to this name
                 initApp(result.user, name);
             }).catch(e => {
-                showToast("Login Failed: Did you enable Anonymous Auth in Firebase?", 'error');
+                showToast("Login Failed. Check Anonymous Auth and Rules.", 'error');
             });
         }
 
@@ -263,9 +271,8 @@
                 if (name) {
                     initApp(user, name);
                 } else {
-                    // Logged in anonymously but name is lost, force re-entry
                     auth.signOut();
-                    window.location.reload();
+                    // window.location.reload(); // Don't force reload, let user enter name
                 }
             }
         });
@@ -278,12 +285,14 @@
             document.getElementById('display-name').innerText = name;
             document.getElementById('user-initial').innerText = getInitials(name);
 
-            await loadSettings();
-            updateClassUI(); 
+            // Start listening to dynamic settings
+            listenToSettings(); 
+            listenToClasses();
+            
             loadHistory();
             lucide.createIcons();
         }
-
+        
         // ------------------------------------------------
         // 2. CORE ATTENDANCE LOGIC
         // ------------------------------------------------
@@ -437,16 +446,103 @@
         // 3. ADMIN & SETTINGS
         // ------------------------------------------------
         
-        async function loadSettings() {
-            const doc = await db.collection('settings').doc('config').get();
-            if (doc.exists) {
-                const data = doc.data();
-                officeLocation = data.location;
-                dailyCode = data.dailyCode;
-                document.getElementById('office-coords').innerText = officeLocation ? "Set ✅" : "Not Set";
-                document.getElementById('daily-code-input').value = dailyCode || "";
+        function listenToSettings() {
+             db.collection('settings').doc('config').onSnapshot(doc => {
+                if (doc.exists) {
+                    const data = doc.data();
+                    officeLocation = data.location;
+                    dailyCode = data.dailyCode;
+                    document.getElementById('office-coords').innerText = officeLocation ? "Set ✅" : "Not Set";
+                    document.getElementById('daily-code-input').value = dailyCode || "";
+                }
+            });
+        }
+        
+        function listenToClasses() {
+             db.collection('settings').doc('classes').onSnapshot(doc => {
+                const classes = doc.exists ? doc.data().list : [];
+                populateClassDropdown(classes);
+                populateClassAdminList(classes);
+            });
+        }
+
+        function populateClassDropdown(classes) {
+            const select = document.getElementById('class-select');
+            select.innerHTML = '<option value="">-- Select Class --</option>'; // Reset
+            
+            classes.sort((a, b) => a.localeCompare(b)).forEach(cls => {
+                const option = document.createElement('option');
+                option.value = cls;
+                option.innerText = cls;
+                select.appendChild(option);
+            });
+        }
+
+        function populateClassAdminList(classes) {
+            const listContainer = document.getElementById('class-list-container');
+            listContainer.innerHTML = '';
+            
+            if (classes.length === 0) {
+                listContainer.innerHTML = '<p class="text-sm text-gray-500">No classes defined yet.</p>';
+                return;
+            }
+
+            classes.forEach(cls => {
+                const item = document.createElement('div');
+                item.className = 'flex justify-between items-center bg-white p-2 rounded-lg border border-yellow-200 shadow-sm';
+                item.innerHTML = `
+                    <span class="text-sm font-medium text-gray-800">${cls}</span>
+                    <button onclick="deleteClass('${cls}')" class="text-red-500 hover:text-red-700 p-1">
+                        <i data-lucide="trash-2" class="w-4 h-4"></i>
+                    </button>
+                `;
+                listContainer.appendChild(item);
+            });
+            lucide.createIcons();
+        }
+
+        async function addNewClass() {
+            const input = document.getElementById('new-class-input');
+            const className = input.value.trim();
+            if (!className) return showToast("Class name cannot be empty.", "error");
+
+            const docRef = db.collection('settings').doc('classes');
+            
+            try {
+                const doc = await docRef.get();
+                let currentList = doc.exists ? doc.data().list : [];
+                
+                if (currentList.includes(className)) {
+                    return showToast("Class already exists!", "error");
+                }
+                
+                currentList.push(className);
+                await docRef.set({ list: currentList });
+                input.value = '';
+                showToast(`'${className}' added successfully!`, "success");
+            } catch (e) {
+                showToast("Error adding class: " + e.message, "error");
             }
         }
+
+        async function deleteClass(className) {
+            if (!confirm(`Are you sure you want to delete the class: ${className}?`)) return;
+            
+            const docRef = db.collection('settings').doc('classes');
+            
+            try {
+                const doc = await docRef.get();
+                let currentList = doc.exists ? doc.data().list : [];
+                
+                const newList = currentList.filter(cls => cls !== className);
+                
+                await docRef.set({ list: newList });
+                showToast(`'${className}' deleted!`, "success");
+            } catch (e) {
+                showToast("Error deleting class: " + e.message, "error");
+            }
+        }
+
 
         function verifyAdmin() {
             const pin = document.getElementById('admin-pin-input').value;
@@ -455,7 +551,7 @@
                 document.getElementById('admin-lock-screen').classList.add('hidden');
                 document.getElementById('admin-controls').classList.remove('hidden');
                 showToast("Admin Unlocked", "success");
-                loadHistory(); // Reload history to show delete buttons
+                loadHistory(); 
             } else {
                 showToast("Wrong PIN", "error");
             }
@@ -479,7 +575,6 @@
         }
 
         async function deleteRecord(id) {
-            // Confirm is replaced by a safe custom modal in real PWA, but for simplicity:
             if (!confirm("Admin: Are you sure you want to delete this record?")) return; 
             try {
                 await db.collection('attendance').doc(id).delete();
