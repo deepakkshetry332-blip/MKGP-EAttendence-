@@ -96,7 +96,7 @@
                 </button>
 
                 <!-- Check Out -->
-                <button onclick="handleAction('OUT')" id="btn-out"
+                <button onclick="confirmCheckOut()" id="btn-out"
                     class="flex flex-col items-center justify-center p-6 bg-red-500 text-white rounded-2xl shadow-lg opacity-50 cursor-not-allowed transition" disabled>
                     <i data-lucide="log-out" class="w-8 h-8 mb-2"></i>
                     <span class="font-bold text-lg">Check Out</span>
@@ -200,6 +200,19 @@
             </div>
         </div>
     </div>
+    
+    <!-- CHECKOUT CONFIRMATION MODAL -->
+    <div id="checkout-confirm-modal" class="hidden fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4 backdrop-blur-sm">
+        <div class="bg-white rounded-2xl w-full max-w-xs p-6 shadow-2xl text-center">
+            <h3 class="font-bold text-xl text-red-600 mb-2">Final Check Out?</h3>
+            <p class="text-sm text-gray-700 mb-6">Are you sure you want to Check Out now? This action cannot be undone by you.</p>
+            <div class="grid grid-cols-2 gap-3 mt-4">
+                <button onclick="document.getElementById('checkout-confirm-modal').classList.add('hidden')" class="py-3 bg-gray-200 text-gray-700 rounded-xl font-bold text-sm">Cancel</button>
+                <button onclick="handleAction('OUT')" class="py-3 bg-red-600 text-white rounded-xl font-bold text-sm shadow-lg">Yes, Check Out</button>
+            </div>
+        </div>
+    </div>
+
 
     <!-- TOAST -->
     <div id="toast" class="fixed bottom-10 left-1/2 transform -translate-x-1/2 bg-gray-800 text-white px-6 py-3 rounded-full shadow-xl transition-all duration-300 opacity-0 translate-y-10 z-[60] flex items-center gap-2 min-w-max">
@@ -224,7 +237,7 @@
         //  CONFIG
         // ==========================================
         const GEOFENCE_RADIUS = 100; // Meters
-        const DEFAULT_ADMIN_PIN = "8747"; // Starting PIN (for first time setup)
+        const DEFAULT_ADMIN_PIN = "8747"; // Starting PIN
 
         // Init Firebase
         if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
@@ -316,7 +329,8 @@
                 setStatusUI("FRESH");
                 return;
             }
-            const dateStr = new Date().toLocaleDateString('en-CA').replace(/\//g, '-');
+            // Fix applied: Using YYYY-MM-DD for robust date comparison
+            const dateStr = new Date().toLocaleDateString('en-CA').replace(/\//g, '-'); 
             const cls = document.getElementById('class-select').value;
             
             db.collection('attendance')
@@ -373,7 +387,15 @@
             }
         }
 
+        function confirmCheckOut() {
+            if (document.getElementById('btn-out').disabled) return;
+            document.getElementById('checkout-confirm-modal').classList.remove('hidden');
+        }
+
         function handleAction(type) {
+            // If called from the confirmation modal, hide it first
+            document.getElementById('checkout-confirm-modal').classList.add('hidden');
+
             if (!officeLocation) return showToast("⚠️ Admin: Set Office Location first", "error");
             if (document.getElementById('class-select').value === "") return showToast("Please select a class first.", "error");
             
@@ -391,6 +413,7 @@
                     if (!dailyCode) return showToast("❌ Admin has not set the Daily Code yet.", "error");
                     document.getElementById('code-modal').classList.remove('hidden');
                 } else {
+                    // This is only called after the confirmation modal is passed
                     processCheckOut();
                 }
 
@@ -410,7 +433,7 @@
         }
 
         async function processCheckIn() {
-            const dateStr = new Date().toLocaleDateString('en-CA').replace(/\//g, '-'); // YYYY-MM-DD
+            const dateStr = new Date().toLocaleDateString('en-CA').replace(/\//g, '-');
             const cls = document.getElementById('class-select').value;
             const name = localStorage.getItem('user_display_name');
             
@@ -458,10 +481,7 @@
                     const data = doc.data();
                     officeLocation = data.location;
                     dailyCode = data.dailyCode;
-                    // --- NEW PIN LOGIC ---
-                    currentAdminPin = data.adminPin || DEFAULT_ADMIN_PIN;
-                    // --- END NEW PIN LOGIC ---
-
+                    currentAdminPin = data.adminPin || DEFAULT_ADMIN_PIN; // Load PIN or use default
                     document.getElementById('office-coords').innerText = officeLocation ? "Set ✅" : "Not Set";
                     document.getElementById('daily-code-input').value = dailyCode || "";
                 }
